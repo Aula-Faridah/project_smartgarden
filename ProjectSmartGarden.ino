@@ -32,8 +32,6 @@ ThingsBoard tb(espClient);
 DHTesp dht, dhtLingkungan;
 DynamicJsonDocument dataEncode(1024);
 RTC_DS1307 rtc;
-// X509List cert(TELEGRAM_CERTIFICATE_ROOT);
-// UniversalTelegramBot bot(BOTtoken, client);
 
 void setup_wifi() {
 
@@ -201,7 +199,7 @@ String getRTC() {
 
 void setup() {
   Serial.begin(115200);
-  setup_wifi();
+  // setup_wifi();
   pinMode(pinRelay, OUTPUT);
   
   if (! rtc.begin()) {
