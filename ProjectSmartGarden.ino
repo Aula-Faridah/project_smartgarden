@@ -1,21 +1,24 @@
 #include <WiFi.h>
 #include <DHTesp.h>
 #include "RTClib.h"
+#include <ArduinoJson.h>
 #include "ThingsBoard.h"
-#include <UniversalTelegramBot.h>
 
 const char* ssid = "Wokwi-GUEST";
 const char* password = "";
+const char* token = "FVYWbihfPPbjdQhfHE9B";
 const char* mqttServer = "thingsboard.cloud";
 int port = 1883;
 String stMac;
 char mac[50];
 char clientId[50];
 
+String iddev = "lahan1";
+
 const char* topicinfo = "tsa/k1/info"; 
 const char* topiccmd = "tsa/k1/command"; 
 const char* topicnotif = "tsa/k1/notif"; 
-const char* topicTB "v1/devices/me/telemetery";
+const char* topicTB = "v1/devices/me/telemetry";
 
 const int DHT_PIN = 15;
 const int DHT2_PIN = 13;
@@ -26,7 +29,8 @@ char daysOfTheWeek[7][12] = {"Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jum'
 WiFiClient espClient;
 PubSubClient client(espClient);
 ThingsBoard tb(espClient);
-DHTesp dht, dht2;
+DHTesp dht, dhtLingkungan;
+DynamicJsonDocument dataEncode(1024);
 RTC_DS1307 rtc;
 // X509List cert(TELEGRAM_CERTIFICATE_ROOT);
 // UniversalTelegramBot bot(BOTtoken, client);
@@ -54,11 +58,30 @@ void setup_wifi() {
   Serial.println(WiFi.localIP());
 }
 
+void reconnect() {
+  // Loop until we're reconnected
+  while (!client.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    // Create a random client ID
+    String clientId = "ESP8266Client-";
+    clientId += String(random(0xffff), HEX);
+    // Attempt to connect
+    if (client.connect(clientId.c_str(),token,password)) {
+      Serial.println("Connected");
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" try again in 5 seconds");
+      delay(5000);
+    }
+  }
+}
+
 void callback(char* topic, byte* message, unsigned int length) {
   Serial.print("Message arrived on topic: ");
   Serial.print(topic);
   Serial.print(". Message: ");
-  String stMessage;
+  String stMessage = "";
   
   for (int i = 0; i < length; i++) {
     Serial.print((char)message[i]);
@@ -66,17 +89,26 @@ void callback(char* topic, byte* message, unsigned int length) {
   }
   Serial.println();
 
-  // if (String(topic) == "topicName/led") {
-  //   Serial.print("Changing output to ");
-  //   if(stMessage == "on"){
-  //     Serial.println("on");
-  //     digitalWrite(ledPin, HIGH);
-  //   }
-  //   else if(stMessage == "off"){
-  //     Serial.println("off");
-  //     digitalWrite(ledPin, LOW);
-  //   }
-  // }
+  if (String(topic) == "tsa/k1/command") {
+    String cmdid = getValue(stMessage,'/',0);
+    String cmdtele = getValue(stMessage,'/',1);
+    String cmd = getValue(stMessage,'/',2);
+    String balasan = "";
+    if(cmdid == iddev){
+      if(cmd == "siram"){
+        siram();
+      }else if(cmd == "info"){
+        balasan += getDht();
+        balasan += "/";
+        balasan += getRTC();
+        balasan += "/";
+        balasan += cmdtele;
+        balasan += "/";
+        balasan += iddev;
+        client.publish(topicinfo, (char*) balasan.c_str());
+      }
+    }
+  }
 }
 
 String getValue(String data, char separator, int index)
@@ -98,16 +130,25 @@ String getValue(String data, char separator, int index)
 String getDht() {
 
   TempAndHumidity lastValues = dht.getTempAndHumidity();
-  TempAndHumidity lastValues2 = dht2.getTempAndHumidity();
+  TempAndHumidity lastValues2 = dhtLingkungan.getTempAndHumidity();
   String result = "";
 
   if (isnan(lastValues.humidity) || isnan(lastValues.temperature || isnan(lastValues2.humidity) || isnan(lastValues2.temperature))) {
     result = "Failed to read from DHT sensor!";
   } else {
-    result += String (lastValues.temperature)+"/"+String (lastValues.humidity) + "/" + String (lastValues2.temperature);
+    result += String (lastValues.humidity)+"/"+String (lastValues2.humidity) + "/" + String (lastValues2.temperature);
   }
 
   return result;
+}
+
+void siram(){
+  pinMode(pinRelay, OUTPUT);
+  digitalWrite(pinRelay, HIGH);
+  String pesanNotif = "Penyiraman berhasil dilakukan pada\n"+getRTC();
+  client.publish(topicnotif,(char*) pesanNotif.c_str());
+  delay(10000);
+  digitalWrite(pinRelay, LOW);
 }
 
 String getRTC() {
@@ -177,10 +218,20 @@ void setup() {
   client.setServer(mqttServer, port);
   client.setCallback(callback);
   dht.setup(DHT_PIN, DHTesp::DHT22);
-  dht2.setup(DHT2_PIN, DHTesp::DHT22);
+  dhtLingkungan.setup(DHT2_PIN, DHTesp::DHT22);
   }
 
 void loop() {
-  
-  delay(1000);
+  if (!client.connected()) {
+    reconnect();
+  }
+  client.loop();
+  Serial.println("Send data tb");
+  dataEncode["kelembapan_tanah"] = getValue(getDht(),'/',0);
+  dataEncode["kelembapan_lingkungan"] = getValue(getDht(),'/',1);
+  dataEncode["suhu_lingkungan"] = getValue(getDht(),'/',2);
+  char buffer[256];
+  size_t n = serializeJson(dataEncode, buffer);
+  client.publish(topicTB, buffer, n);
+  delay(500);
 }
