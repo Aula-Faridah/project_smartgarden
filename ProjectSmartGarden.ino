@@ -2,7 +2,6 @@
 #include <DHTesp.h>
 #include "RTClib.h"
 #include "ThingsBoard.h"
-#include <UniversalTelegramBot.h>
 
 const char* ssid = "Wokwi-GUEST";
 const char* password = "";
@@ -28,8 +27,6 @@ PubSubClient client(espClient);
 ThingsBoard tb(espClient);
 DHTesp dht, dht2;
 RTC_DS1307 rtc;
-// X509List cert(TELEGRAM_CERTIFICATE_ROOT);
-// UniversalTelegramBot bot(BOTtoken, client);
 
 void setup_wifi() {
 
@@ -54,6 +51,24 @@ void setup_wifi() {
   Serial.println(WiFi.localIP());
 }
 
+void mqttReconnect() {
+  while (!client.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    long r = random(1000);
+    sprintf(clientId, "clientId-%ld", r);
+    if (client.connect(clientId)) {
+      Serial.print(clientId);
+      Serial.println(" connected");
+      client.subscribe("topicName/led");
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" try again in 5 seconds");
+      delay(5000);
+    }
+  }
+}
+
 void callback(char* topic, byte* message, unsigned int length) {
   Serial.print("Message arrived on topic: ");
   Serial.print(topic);
@@ -66,17 +81,15 @@ void callback(char* topic, byte* message, unsigned int length) {
   }
   Serial.println();
 
-  // if (String(topic) == "topicName/led") {
-  //   Serial.print("Changing output to ");
-  //   if(stMessage == "on"){
-  //     Serial.println("on");
-  //     digitalWrite(ledPin, HIGH);
-  //   }
-  //   else if(stMessage == "off"){
-  //     Serial.println("off");
-  //     digitalWrite(ledPin, LOW);
-  //   }
-  // }
+  if (String(topic) == topicinfo) {
+    
+    if(stMessage == "on"){
+      client.publish(topicinfo, );
+    }
+    else if(stMessage == "off"){
+      
+    }
+  }
 }
 
 String getValue(String data, char separator, int index)
@@ -160,7 +173,7 @@ String getRTC() {
 
 void setup() {
   Serial.begin(115200);
-  setup_wifi();
+  // setup_wifi();
   pinMode(pinRelay, OUTPUT);
   
   if (! rtc.begin()) {
