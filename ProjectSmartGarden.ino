@@ -153,6 +153,7 @@ String getRTC() {
   DateTime now = rtc.now();
   String month = "";
   String result = "";
+  String timeHour = "";
 
   switch (now.month()) {
     case 1 :
@@ -193,7 +194,13 @@ String getRTC() {
       break;
   }
 
-  result += String (daysOfTheWeek[now.dayOfTheWeek()]) + ", " + now.day() + " " + month + " " + now.year();
+  if (now.hour() < 10) {
+    timeHour += '0' + String(now.hour());
+  } else {
+    timeHour = now.hour();
+  }
+
+  result += String (daysOfTheWeek[now.dayOfTheWeek()]) + ", " + now.day() + " " + month + " " + now.year() + " " + timeHour + ":" + now.minute();
   return result;
 }
 
