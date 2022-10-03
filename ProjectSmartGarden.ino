@@ -203,7 +203,7 @@ String getRTC() {
   } else {
     timeHour = now.hour();
   }
-
+  
   result += String (daysOfTheWeek[now.dayOfTheWeek()]) + ", " + now.day() + " " + month + " " + now.year() + " " + timeHour + ":" + now.minute();
   return result;
 }
