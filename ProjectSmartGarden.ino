@@ -6,8 +6,9 @@
 
 const char* ssid = "Wokwi-GUEST";
 const char* password = "";
-const char* token = "FVYWbihfPPbjdQhfHE9B";
-const char* mqttServer = "thingsboard.cloud";
+const char* passwordmqtt = "objSNrgXqMXM0fMF8uxRjhy92i6fFKcT";
+const char* token = "kzntxixa:kzntxixa";
+const char* mqttServer = "armadillo.rmq.cloudamqp.com";
 int port = 1883;
 String stMac;
 char mac[50];
@@ -22,7 +23,7 @@ const char* topicTB = "v1/devices/me/telemetry";
 
 const int DHT_PIN = 15;
 const int DHT2_PIN = 13;
-const int pinRelay = 3;
+const int pinRelay = 2;
 
 char daysOfTheWeek[7][12] = {"Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jum'at", "Sabtu"};
 
@@ -32,6 +33,8 @@ ThingsBoard tb(espClient);
 DHTesp dht, dhtLingkungan;
 DynamicJsonDocument dataEncode(1024);
 RTC_DS1307 rtc;
+// X509List cert(TELEGRAM_CERTIFICATE_ROOT);
+// UniversalTelegramBot bot(BOTtoken, client);
 
 void setup_wifi() {
 
@@ -64,8 +67,9 @@ void reconnect() {
     String clientId = "ESP8266Client-";
     clientId += String(random(0xffff), HEX);
     // Attempt to connect
-    if (client.connect(clientId.c_str(),token,password)) {
+    if (client.connect(clientId.c_str(),token,passwordmqtt)) {
       Serial.println("Connected");
+      client.subscribe(topiccmd);
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
@@ -85,7 +89,7 @@ void callback(char* topic, byte* message, unsigned int length) {
     Serial.print((char)message[i]);
     stMessage += (char)message[i];
   }
-  Serial.println();
+  Serial.println(stMessage);
 
   if (String(topic) == "tsa/k1/command") {
     String cmdid = getValue(stMessage,'/',0);
@@ -206,7 +210,7 @@ String getRTC() {
 
 void setup() {
   Serial.begin(115200);
-  // setup_wifi();
+  setup_wifi();
   pinMode(pinRelay, OUTPUT);
   
   if (! rtc.begin()) {
@@ -231,7 +235,7 @@ void loop() {
     reconnect();
   }
   client.loop();
-  Serial.println("Send data tb");
+  // Serial.println("Send data tb");
   dataEncode["kelembapan_tanah"] = getValue(getDht(),'/',0);
   dataEncode["kelembapan_lingkungan"] = getValue(getDht(),'/',1);
   dataEncode["suhu_lingkungan"] = getValue(getDht(),'/',2);
