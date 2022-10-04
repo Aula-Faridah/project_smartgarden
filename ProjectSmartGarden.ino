@@ -2,7 +2,7 @@
 #include <DHTesp.h>
 #include "RTClib.h"
 #include <ArduinoJson.h>
-#include "ThingsBoard.h"
+#include <PubSubClient.h>
 
 const char* ssid = "Wokwi-GUEST";
 const char* password = "";
@@ -18,6 +18,8 @@ String iddev = "lahan1";
 
 const char* topicinfo = "tsa/k1/info";
 const char* topiccmd = "tsa/k1/command";
+const char* topicmode = "tsa/k1/mode";
+const char* topicpersonal = "tsa/k1/personal";
 const char* topicnotif = "tsa/k1/notif";
 const char* topicTB = "v1/devices/me/telemetry";
 const char* topicstream = "tsa/k1/stream";
@@ -36,7 +38,6 @@ char daysOfTheWeek[7][12] = {"Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jum'
 
 WiFiClient espClient;
 PubSubClient client(espClient);
-ThingsBoard tb(espClient);
 DHTesp dht, dhtLingkungan;
 DynamicJsonDocument dataEncode(1024);
 RTC_DS1307 rtc;
@@ -76,6 +77,7 @@ void reconnect() {
     if (client.connect(clientId.c_str(), token, passwordmqtt)) {
       Serial.println("Connected");
       client.subscribe(topiccmd);
+      client.subscribe(topicmode);
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
@@ -104,7 +106,7 @@ void callback(char* topic, byte* message, unsigned int length) {
     String balasan = "";
     if (cmdid == iddev) {
       if (cmd == "siram") {
-        siram();
+        siramnormal();
       } else if (cmd == "info") {
         balasan += getDht();
         balasan += "/";
@@ -114,10 +116,32 @@ void callback(char* topic, byte* message, unsigned int length) {
         balasan += "/";
         balasan += iddev;
         client.publish(topicinfo, (char*) balasan.c_str());
-      } else if (cmd == "sirampendek") {
-        sirampanjang();
-      } else if (cmd == "sirampanjang") {
-        sirampanjang();
+      } else if (cmd == "siram") {
+        manual();
+      }
+    }
+  }else if(String(topic) == "tsa/k1/mode"){
+    String modetele = getValue(stMessage, '/', 0);
+    String modedev = getValue(stMessage, '/', 1);
+    if(modedev == "auto"){
+      if(isAuto == 1){
+        String balasan = "Device sudah dalam keadaan otomatis/"+modetele;
+        client.publish(topicpersonal,(char*) balasan.c_str());
+      }else{
+        isAuto = 1;
+        String balasan = "Device berhasil diganti ke mode otomatis";
+        client.publish(topicnotif,(char*) balasan.c_str());
+      }
+      
+      
+    }else if(modedev == "manual"){
+      if(isAuto == 0){
+        String balasan = "Device sudah dalam keadaan manual/"+modetele;
+        client.publish(topicpersonal,(char*) balasan.c_str());
+      }else{
+        isAuto = 0;
+        String balasan = "Device berhasil diganti ke mode manual";
+        client.publish(topicnotif,(char*) balasan.c_str());
       }
     }
   }
@@ -157,11 +181,10 @@ int jadwal() {
   DateTime now = rtc.now();
   int result;
 
-  if ((now.hour() == 8 || now.hour() == 13  || now.hour() == 17) && statussiram == 0 ) {
-    statussiram = 1;
+  if ((now.hour() == 8 || now.hour() == 13  || now.hour() == 17)) {
+
     result = 1;
-  } else if ((now.hour() != 8 || now.hour() != 13  || now.hour() != 17) && statussiram == 1) {
-    statussiram = 0;
+  } else {
     result = 0;
   }
 
@@ -170,61 +193,66 @@ int jadwal() {
 
 void manual(){
   String SKUTemp = "";
+  TempAndHumidity lastValues = dht.getTempAndHumidity();
+  TempAndHumidity lastValues2 = dhtLingkungan.getTempAndHumidity();
+
+  float KT = lastValues.humidity;
+  float SU = lastValues2.temperature;
+  float KU = lastValues2.humidity;
   SKUTemp = getSKU();
   int SKU = SKUTemp.toInt();
   if(KT<40){
       switch (SKU){
-        switch (SKU){
         case 11:
-          sirampanjang();
+          siramlama();
           break;
         case 12:
-          sirampanjang();
+          siramlama();
           break;
         case 13:
-          sirampanjang();
+          siramlama();
           break;
         case 21:
-          sirampanjang();
+          siramlama();
           break;
         case 22:
-          sirampanjang();
+          siramlama();
           break;
         case 23:
-          siram();
+          siramnormal();
           break;
         case 31:
-          sirampanjang();
+          siramlama();
           break;
         case 32:
-          siram();
+          siramnormal();
           break;
         case 33:
-          sirampendek();
+          siramsebentar();
           break;
       }
     }else{
       switch (SKU){
         case 11:
-          sirampanjang();
+          siramlama();
           break;
         case 12:
-          siram();
+          siramnormal();
           break;
         case 13:
-          siram();
+          siramnormal();
           break;
         case 21:
-          siram();
+          siramnormal();
           break;
         case 22:
-          sirampendek();
+          siramsebentar();
           break;
         case 23:
-          sirampendek();
+          siramsebentar();
           break;
         case 31:
-          sirampendek();
+          siramsebentar();
           break;
         case 32:
           break;
@@ -233,7 +261,7 @@ void manual(){
       }
     }
   }
-}
+
 
 String getSKU() {
   TempAndHumidity lastValues = dht.getTempAndHumidity();
@@ -267,21 +295,39 @@ void penyiraman(int persen) {
   digitalWrite(pinRelay, HIGH);
   delay(round(durasi * (persen / 100)));
   digitalWrite(pinRelay, LOW);
-  String pesanNotif = "Penyiraman berhasil dilakukan pada\n" + getRTC();
+  String pesanNotif = "Penyiraman berhasil dilakukan pada " + getRTC();
+  pesanNotif += "\n\nCatatan: device tidak akan menerima command selama 1 jam setelah penyiraman";
+  pesanNotif += "\nCatatan: status lahan akan diinformasikan 1 jam setelah penyiraman";
+  pesanNotif += "\nstatus: ";
+  if(isAuto){
+    pesanNotif+="otomatis";
+  }else{
+    pesanNotif+="manual";
+  }
   client.publish(topicnotif, (char*) pesanNotif.c_str());
+  // delay(3600000);
+  delay(5000);
+  String balasan ="";
+  String statusdht = getDht();
+  balasan += "Pada lahan "+iddev+" waktu:\n";
+  balasan += getRTC();
+  balasan += "\nKelembapan tanah: "+getValue(statusdht,'/',0);
+  balasan += "\nKelembapan udara: "+getValue(statusdht,'/',1);
+  balasan += "\nSuhu udara: "+getValue(statusdht,'/',2);
+  client.publish(topicnotif, (char*) balasan.c_str());
 }
 
-void siram() {
+void siramnormal() {
   penyiraman(100);
 }
-void sirampendek() {
+void siramsebentar() {
   penyiraman(60);
 }
-void sirampanjang() {
+void siramlama() {
   penyiraman(150);
 }
 
-String getdateRTC() {
+String getRTC() {
   DateTime now = rtc.now();
   String month = "";
   String result = "";
@@ -370,7 +416,7 @@ void setup() {
 
   if (! rtc.isrunning()) {
     Serial.println("RTC is NOT running, let's set the time!");
-    rtc.adjust(DateTime(F(_DATE), F(TIME_)));
+    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   }
 
   client.setServer(mqttServer, port);
@@ -397,6 +443,12 @@ void loop() {
 
   if (isAuto) {
     String SKUTemp = "";
+    TempAndHumidity lastValues = dht.getTempAndHumidity();
+    TempAndHumidity lastValues2 = dhtLingkungan.getTempAndHumidity();
+
+    float KT = lastValues.humidity;
+    float SU = lastValues2.temperature;
+    float KU = lastValues2.humidity;
     SKUTemp = getSKU();
     int SKU = SKUTemp.toInt();
     if (KT < 40) {
@@ -433,43 +485,6 @@ void loop() {
   } else {
     if(jadwal()){
       manual();
-      
     }
   }
-
-  // if (lastValues.humidity < 45 && status == 0) {
-  //   status = 1;
-  //   Serial.println("Kering");
-  //   String pesanstatus = "";
-
-  //   pesanstatus += "Lahan Anda sedang Kering dengan Id " + iddev;
-  //   pesanstatus += "/";
-  //   pesanstatus += getRTC();
-  //   pesanstatus += "/";
-  //   pesanstatus += getDHT();
-  //   client.publish(topicstream, (char*) pesanstatus.c_str());
-
-  // } else if (lastValues.humidity >= 45 && lastValues.hummidity <= 65 && status == 1) {
-  //   status = 0;
-  //   String pesanstatus = "";
-
-  //   Serial.println("Normal");
-  //   pesanstatus += "Lahan Anda Kembali Normal dengan Id " + iddev;
-  //   pesanstatus += "/";
-  //   pesanstatus += getRTC();
-  //   pesanstatus += "/";
-  //   pesanstatus += getDHT();
-  //   client.publish(topicstream, (char*) pesanstatus.c_str());
-
-  // } else if (lastValues.humidity >= 65 status == 0) {
-  //   status = 1;
-  //   Serial.println("Lembab");
-  //   pesanstatus += "Lahan Anda Sedang Lembab dengan Id " + iddev;
-  //   pesanstatus += "/";
-  //   pesanstatus += getRTC();
-  //   pesanstatus += "/";
-  //   pesanstatus += getDHT();
-  //   client.publish(topicstream, (char*) pesanstatus.c_str());
-  // }
-  // delay(500);
 }
