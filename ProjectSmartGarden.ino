@@ -20,10 +20,13 @@ const char* topicinfo = "tsa/k1/info";
 const char* topiccmd = "tsa/k1/command"; 
 const char* topicnotif = "tsa/k1/notif"; 
 const char* topicTB = "v1/devices/me/telemetry";
+const char* topicstream = "tsa/k1/stream";
 
 const int DHT_PIN = 15;
 const int DHT2_PIN = 13;
 const int pinRelay = 2;
+
+int status = 0;
 
 char daysOfTheWeek[7][12] = {"Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jum'at", "Sabtu"};
 
@@ -108,6 +111,10 @@ void callback(char* topic, byte* message, unsigned int length) {
         balasan += "/";
         balasan += iddev;
         client.publish(topicinfo, (char*) balasan.c_str());
+      }else if(cmd == "sirampendek"){
+        sirampanjang();
+      }else if(cmd == "sirampanjang"){
+        sirampanjang();
       }
     }
   }
@@ -150,6 +157,22 @@ void siram(){
   String pesanNotif = "Penyiraman berhasil dilakukan pada\n"+getRTC();
   client.publish(topicnotif,(char*) pesanNotif.c_str());
   delay(10000);
+  digitalWrite(pinRelay, LOW);
+}
+void sirampendek(){
+  pinMode(pinRelay, OUTPUT);
+  digitalWrite(pinRelay, HIGH);
+  String pesanNotif = "Penyiraman berhasil dilakukan pada\n"+getRTC();
+  client.publish(topicnotif,(char*) pesanNotif.c_str());
+  delay(5000);
+  digitalWrite(pinRelay, LOW);
+}
+void sirampanjang(){
+  pinMode(pinRelay, OUTPUT);
+  digitalWrite(pinRelay, HIGH);
+  String pesanNotif = "Penyiraman berhasil dilakukan pada\n"+getRTC();
+  client.publish(topicnotif,(char*) pesanNotif.c_str());
+  delay(15000);
   digitalWrite(pinRelay, LOW);
 }
 
@@ -227,7 +250,7 @@ void setup() {
 
   if (! rtc.isrunning()) {
     Serial.println("RTC is NOT running, let's set the time!");
-    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+    rtc.adjust(DateTime(F(_DATE), F(TIME_)));
   }
 
   client.setServer(mqttServer, port);
@@ -241,12 +264,52 @@ void loop() {
     reconnect();
   }
   client.loop();
-  // Serial.println("Send data tb");
+  
   dataEncode["kelembapan_tanah"] = getValue(getDht(),'/',0);
   dataEncode["kelembapan_lingkungan"] = getValue(getDht(),'/',1);
   dataEncode["suhu_lingkungan"] = getValue(getDht(),'/',2);
   char buffer[256];
   size_t n = serializeJson(dataEncode, buffer);
   client.publish(topicTB, buffer, n);
+
+  TempAndHumidity lastValues = dht.getTempAndHumidity();
+  TempAndHumidity lastValues2 = dhtLingkungan.getTempAndHumidity();
+
+  if(lastValues.humidity < 45 && status == 0){
+    status = 1;
+    Serial.println("Kering");
+    String pesanstatus = "";
+
+    pesanstatus += "Lahan Anda sedang Kering dengan Id "+ iddev;
+    pesanstatus += "/";
+    pesanstatus += getRTC();
+    pesanstatus += "/";
+    pesanstatus += getDHT();
+    client.publish(topicstream, (char*) pesanstatus.c_str());
+
+  }else if (lastValues.humidity >= 45 && lastValues.hummidity <=65 && status==1){
+    status = 0;
+    String pesanstatus = "";
+
+    Serial.println("Normal");
+    pesanstatus += "Lahan Anda Kembali Normal dengan Id "+ iddev;
+    pesanstatus += "/";
+    pesanstatus += getRTC();
+    pesanstatus += "/";
+    pesanstatus += getDHT();
+    client.publish(topicstream, (char*) pesanstatus.c_str());
+
+  }else if (lastValues.humidity >=65 status == 0){
+    status = 1;
+    Serial.println("Lembab");
+    pesanstatus += "Lahan Anda Sedang Lembab dengan Id "+ iddev;
+    pesanstatus += "/";
+    pesanstatus += getRTC();
+    pesanstatus += "/";
+    pesanstatus += getDHT();
+    client.publish(topicstream, (char*) pesanstatus.c_str());
+  }
+
+
   delay(500);
 }
