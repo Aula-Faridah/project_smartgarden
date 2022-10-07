@@ -181,7 +181,7 @@ int jadwal() {
   DateTime now = rtc.now();
   int result;
 
-  if ((now.hour() == 8 || now.hour() == 13  || now.hour() == 17)) {
+  if ((now.hour() == (8+1) || now.hour() == 13  || now.hour() == 17)) {
 
     result = 1;
   } else {
@@ -290,31 +290,33 @@ String getSKU() {
   
   return result;
 }
-
+int batassiram=0;
 void penyiraman(int persen) {
-  digitalWrite(pinRelay, HIGH);
-  delay(round(durasi * (persen / 100)));
-  digitalWrite(pinRelay, LOW);
-  String pesanNotif = "Penyiraman berhasil dilakukan pada " + getRTC();
-  pesanNotif += "\n\nCatatan: device tidak akan menerima command selama 1 jam setelah penyiraman";
-  pesanNotif += "\nCatatan: status lahan akan diinformasikan 1 jam setelah penyiraman";
-  pesanNotif += "\nstatus: ";
-  if(isAuto){
-    pesanNotif+="otomatis";
-  }else{
-    pesanNotif+="manual";
+  if(millis()>batassiram){
+    digitalWrite(pinRelay, HIGH);
+    delay(round(durasi * (persen / 100)));
+    digitalWrite(pinRelay, LOW);
+    String pesanNotif = "Penyiraman berhasil dilakukan pada " + getRTC()+" pukul "+gettimeRTC();
+    pesanNotif += "\n\nCatatan: device tidak bisa melakukan penyiraman lagi selama 1 jam kedepan";
+    // pesanNotif += "\nCatatan: status lahan akan diinformasikan 1 jam setelah penyiraman";
+    pesanNotif += "\nstatus: ";
+    if(isAuto){
+      pesanNotif+="otomatis";
+    }else{
+      pesanNotif+="manual";
+    }
+    client.publish(topicnotif, (char*) pesanNotif.c_str());
+    batassiram = millis()+3600000;
+    // delay(5000);
+    String balasan ="";
+    String statusdht = getDht();
+    balasan += "Pada lahan "+iddev+" waktu:\n";
+    balasan += getRTC();
+    balasan += "\nKelembapan tanah: "+getValue(statusdht,'/',0);
+    balasan += "\nKelembapan udara: "+getValue(statusdht,'/',1);
+    balasan += "\nSuhu udara: "+getValue(statusdht,'/',2);
+    client.publish(topicnotif, (char*) balasan.c_str());
   }
-  client.publish(topicnotif, (char*) pesanNotif.c_str());
-  // delay(3600000);
-  delay(5000);
-  String balasan ="";
-  String statusdht = getDht();
-  balasan += "Pada lahan "+iddev+" waktu:\n";
-  balasan += getRTC();
-  balasan += "\nKelembapan tanah: "+getValue(statusdht,'/',0);
-  balasan += "\nKelembapan udara: "+getValue(statusdht,'/',1);
-  balasan += "\nSuhu udara: "+getValue(statusdht,'/',2);
-  client.publish(topicnotif, (char*) balasan.c_str());
 }
 
 void siramnormal() {
@@ -431,12 +433,19 @@ void loop() {
   }
   client.loop();
 
-  dataEncode["kelembapan_tanah"] = getValue(getDht(), '/', 0);
-  dataEncode["kelembapan_lingkungan"] = getValue(getDht(), '/', 1);
-  dataEncode["suhu_lingkungan"] = getValue(getDht(), '/', 2);
-  char buffer[256];
-  size_t n = serializeJson(dataEncode, buffer);
-  client.publish(topicTB, buffer, n);
+  // dataEncode["kelembapan_tanah"] = getValue(getDht(), '/', 0);
+  // dataEncode["kelembapan_lingkungan"] = getValue(getDht(), '/', 1);
+  // dataEncode["suhu_lingkungan"] = getValue(getDht(), '/', 2);
+  // char buffer[256];
+  // size_t n = serializeJson(dataEncode, buffer);
+  String datastream = iddev +"/";
+  datastream =  getValue(getDht(), '/', 0)+"/";
+  datastream +=  getValue(getDht(), '/', 1)+"/";
+  datastream +=  getValue(getDht(), '/', 2)+"/";
+  datastream += iddev+"/"
+  datastream += getRTC()+" ";
+  datastream += gettimeRTC();
+  client.publish(topicstream, (char*) datastream.c_str());
 
   TempAndHumidity lastValues = dht.getTempAndHumidity();
   TempAndHumidity lastValues2 = dhtLingkungan.getTempAndHumidity();
